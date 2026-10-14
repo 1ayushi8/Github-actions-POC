@@ -1,0 +1,51 @@
+name: POC Build and Test Pipeline
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build-and-validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build Docker Image (Dry-run test)
+        run: |
+          docker build -t dummy-app:latest .
+          echo "✅ Docker image built successfully locally inside GitHub Runner!"
+
+      - name: Run Container Smoke Test
+        run: |
+          docker run -d -p 3000:3000 --name test-container dummy-app:latest
+          sleep 3 # Give it a moment to start
+          
+          # Test if the endpoint responds correctly
+          response=$(curl -s http://localhost:3000/)
+          echo "Response from container: $response"
+          
+          if echo "$response" | grep -q "Hello from GitHub Actions POC App!"; then
+            echo "✅ Smoke test passed!"
+          else
+            echo "❌ Smoke test failed!"
+            exit 1
+          fi
+
+      - name: Clean up Docker Container
+        if: always()
+        run: |
+          docker stop test-container || true
+          docker rm test-container || true
