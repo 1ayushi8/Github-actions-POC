@@ -48,12 +48,14 @@ jobs:
 
           (
             for i in {1..100}; do
-              http_code=$(curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 5 http://localhost:3000/health || true)
-              curl_exit=$?
-              if [ "$curl_exit" -ne 0 ]; then
-                status="000"
-              else
+              if http_code=$(curl -sS -o /dev/null -w "%{http_code}" \
+                --connect-timeout 2 --max-time 5 \
+                http://localhost:3000/health); then
+                curl_exit=0
                 status="$http_code"
+              else
+                curl_exit=$?
+                status="000"
               fi
 
               echo "$(date +%T) - Status: $status (curl_exit=$curl_exit, http_code=$http_code)" >> logs/traffic.log
