@@ -36,7 +36,7 @@ jobs:
           if [ "$healthy" -ne 1 ]; then
             echo "❌ Timed out waiting for app"
             echo "--- Dumping container logs for debugging ---"
-            docker compose logs app --no-color > logs/app_startup.log || true
+            docker compose logs api --no-color > logs/app_startup.log || true
             cat logs/app_startup.log || true
             exit 1
           fi
@@ -97,7 +97,7 @@ jobs:
 
             echo
             echo "--- App container logs ---"
-            docker compose logs app --no-color || true
+            docker compose logs api --no-color || true
             exit 1
           else
             echo "✅ SUCCESS! Zero downtime achieved. All requests returned HTTP 200 during the update."
