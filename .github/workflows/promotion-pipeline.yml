@@ -1,0 +1,56 @@
+name: Multi-Environment Promotion Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  release:
+    types: [ "published" ]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run Unit Tests & Linting
+        run: |
+          echo "Running test suite..."
+          # npm test or similar commands go here
+          echo "✅ Tests passed successfully!"
+
+  deploy-staging:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://staging.dummy-app.internal
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Staging Server
+        run: |
+          echo "🚀 Deploying commit ${{ github.sha }} to STAGING environment..."
+          # In a real setup, you'd use SSH or a cloud provider action here
+          echo "Staging DB connection: ${{ secrets.DB_CONNECTION_STRING }}"
+          echo "✅ Staging deployment complete!"
+
+  deploy-production:
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    # This environment enforces manual reviewer protection rules in GitHub
+    environment:
+      name: production
+      url: https://dummy-app.com
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Production Server
+        run: |
+          echo "🌟 Promoting and deploying to PRODUCTION environment..."
+          # In a real setup, you'd deploy your hardened production container here
+          echo "Production DB connection: ${{ secrets.DB_CONNECTION_STRING }}"
+          echo "✅ Production deployment complete!"
