@@ -1,0 +1,83 @@
+name: Zero-Downtime Deployment POC Test
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch: # Allows you to run it manually from the GitHub Actions tab
+
+jobs:
+  test-zero-downtime:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 1. Deploy Initial Version (v1)
+        run: |
+          # Set environment file for v1
+          echo "APP_VERSION=v1" > .env
+          docker compose up -d --build
+          
+          # Wait for health check to pass
+          echo "Waiting for app to become healthy..."
+          for i in {1..15}; do
+            if curl -s http://localhost:3000/health | grep -q "UP"; then
+              echo "✅ App v1 is healthy!"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "❌ Timed out waiting for app"
+          exit 1
+
+      - name: 2. Start Background Traffic Generator (Load Test)
+        run: |
+          echo "🚀 Starting continuous background traffic..."
+          mkdir -p logs
+          
+          # Run a background loop sending requests every 0.2s for ~20 seconds
+          (
+            for i in {1..100}; do
+              status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/ || echo "000")
+              echo "$(date +%T) - Status: $status" >> logs/traffic.log
+              if [ "$status" != "200" ]; then
+                echo "FAILED_REQUEST at $(date +%T) with status $status" >> logs/failures.log
+              fi
+              sleep 0.2
+            done
+          ) &
+          
+          echo "Traffic generator running in background."
+
+      - name: 3. Trigger Rolling Update to Version (v2)
+        run: |
+          # Wait a few seconds to let traffic accumulate on v1
+          sleep 3
+          
+          echo "🔄 Updating app version to v2..."
+          echo "APP_VERSION=v2" > .env
+          
+          # Trigger docker-compose update
+          docker compose up -d --build --remove-orphans
+          
+          # Give enough time for traffic script to finish sampling during/after rollout
+          sleep 15
+
+      - name: 4. Verify Zero-Downtime Results
+        run: |
+          echo "--- Traffic Summary Log ---"
+          cat logs/traffic.log
+          
+          if [ -f logs/failures.log ]; then
+            echo "❌ Zero-downtime test FAILED! Dropped requests found:"
+            cat logs/failures.log
+            exit 1
+          else
+            echo "✅ SUCCESS! Zero downtime achieved. All requests returned HTTP 200 during the update."
+          fi
+
+      - name: 5. Cleanup Docker Containers
+        if: always()
+        run: |
+          docker compose down
