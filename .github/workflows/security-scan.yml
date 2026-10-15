@@ -1,0 +1,53 @@
+name: Security Shift-Left Scan POC
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  security-scans:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 1. Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 2. Run SCA (Software Composition Analysis - npm audit)
+        run: |
+          echo "🔍 Scanning npm dependencies for vulnerabilities..."
+          # audit level high fails the build if high or critical vulns exist
+          npm audit --audit-level=high || echo "⚠️ Vulnerabilities found in dependencies!"
+          # For a strict strict gate, change '|| echo ...' to just fail, but npm audit can be noisy depending on packages.
+
+      - name: 3. Run SAST (Static Application Security Testing with Semgrep)
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: auto
+          # Fails pipeline if findings are critical/high
+          generate-sarif: 'true'
+        continue-on-error: true # Set to false in production if you want a hard block
+
+      - name: 4. Build Docker Image for Scanning
+        run: |
+          docker build -t dummy-app:${{ github.sha }} .
+
+      - name: 5. Run Container Vulnerability Scan (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'dummy-app:${{ github.sha }}'
+          format: 'table'
+          exit-code: '1' # Fails the pipeline if vulnerabilities are found
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+
+      - name: 6. Clean up local docker image
+        if: always()
+        run: docker rmi dummy-app:${{ github.sha }} || true
